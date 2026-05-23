@@ -2633,17 +2633,55 @@
         renderDantePreview();
       }
 
+      function buildNamedRoutes() {
+        // For each SQ7 (FOH) channel, find the matching name on SQ6 (Monitors)
+        const routes = [];
+        const unrouted = [];
+        sq7Ch.forEach((fohName, fohIdx) => {
+          if (!fohName || !fohName.trim()) return;
+          const monIdx = sq6Ch.findIndex(
+            (m) => m && m.trim().toLowerCase() === fohName.trim().toLowerCase()
+          );
+          if (monIdx !== -1) {
+            routes.push({ sq7Ch: fohIdx + 1, sq6Ch: monIdx + 1, name: fohName.trim() });
+          } else {
+            unrouted.push({ sq7Ch: fohIdx + 1, name: fohName.trim() });
+          }
+        });
+        return { routes, unrouted };
+      }
+
       function renderDantePreview() {
         const el = document.getElementById("dante-preview");
         if (!el) return;
         const sq6 = load("bp_dante_sq6", "SQ6");
         const sq7 = load("bp_dante_sq7", "SQ7");
-        let rows = [];
-        for (let i = 0; i < TOTAL_CH; i++) {
-          const chNum = String(i + 1).padStart(2, "0");
-          const name = sq6Ch[i] ? escHtml(sq6Ch[i]) : `Ch ${i + 1}`;
-          rows.push(`<span style="color:var(--text)">${sq6}</span> TX ${chNum} <span style="color:var(--purple)">[${name}]</span> → <span style="color:var(--text)">${sq7}</span> RX ${chNum}`);
+        const { routes, unrouted } = buildNamedRoutes();
+
+        if (routes.length === 0 && unrouted.length === 0) {
+          el.innerHTML = `<span style="color:var(--muted)">Fill in SQ6 and SQ7 channel names to see routing.</span>`;
+          return;
         }
+
+        let rows = [];
+        rows.push(`<span style="color:var(--muted);font-size:0.7rem;">── ${routes.length} matched route${routes.length !== 1 ? "s" : ""} ──</span>`);
+        routes.forEach((r) => {
+          const s6 = String(r.sq6Ch).padStart(2, "0");
+          const s7 = String(r.sq7Ch).padStart(2, "0");
+          rows.push(
+            `<span style="color:var(--text)">${sq6}</span> TX ${s6} ` +
+            `<span style="color:var(--purple)">[${escHtml(r.name)}]</span> → ` +
+            `<span style="color:var(--text)">${sq7}</span> RX ${s7}`
+          );
+        });
+
+        if (unrouted.length > 0) {
+          rows.push(`<br><span style="color:var(--muted);font-size:0.7rem;">── ${unrouted.length} FOH channel${unrouted.length !== 1 ? "s" : ""} with no match on SQ6 ──</span>`);
+          unrouted.forEach((u) => {
+            rows.push(`<span style="color:var(--red)">Ch ${String(u.sq7Ch).padStart(2,"0")} [${escHtml(u.name)}] — not found on SQ6</span>`);
+          });
+        }
+
         el.innerHTML = rows.join("<br>");
       }
 
@@ -2651,31 +2689,32 @@
         const sq6 = load("bp_dante_sq6", "SQ6");
         const sq7 = load("bp_dante_sq7", "SQ7");
         const eventName = eventInfo.name || "Patch";
+        const { routes } = buildNamedRoutes();
 
         const lines = [];
         lines.push('<?xml version="1.0" encoding="UTF-8"?>');
         lines.push(`<dante_preset name="${escXml(eventName)}" version="0">`);
 
-        // SQ6 — TX device (transmitter)
+        // SQ6 TX: only channels that are actually being routed to FOH
         lines.push(`  <device name="${escXml(sq6)}">`);
-        for (let i = 0; i < TOTAL_CH; i++) {
-          const chNum = String(i + 1).padStart(2, "0");
-          const label = sq6Ch[i] || `Ch ${i + 1}`;
+        routes.forEach((r) => {
+          const chNum = String(r.sq6Ch).padStart(2, "0");
           lines.push(`    <txchannel name="${chNum}">`);
-          lines.push(`      <label>${escXml(label)}</label>`);
+          lines.push(`      <label>${escXml(r.name)}</label>`);
           lines.push(`    </txchannel>`);
-        }
+        });
         lines.push(`  </device>`);
 
-        // SQ7 — RX device (receiver), subscribed to SQ6 TX 1:1
+        // SQ7 RX: each FOH channel subscribes to the matched SQ6 TX channel
         lines.push(`  <device name="${escXml(sq7)}">`);
-        for (let i = 0; i < TOTAL_CH; i++) {
-          const chNum = String(i + 1).padStart(2, "0");
-          lines.push(`    <rxchannel name="${chNum}">`);
+        routes.forEach((r) => {
+          const rxNum = String(r.sq7Ch).padStart(2, "0");
+          const txNum = String(r.sq6Ch).padStart(2, "0");
+          lines.push(`    <rxchannel name="${rxNum}">`);
           lines.push(`      <subscribed_device>${escXml(sq6)}</subscribed_device>`);
-          lines.push(`      <subscribed_channel>${chNum}</subscribed_channel>`);
+          lines.push(`      <subscribed_channel>${txNum}</subscribed_channel>`);
           lines.push(`    </rxchannel>`);
-        }
+        });
         lines.push(`  </device>`);
 
         lines.push(`</dante_preset>`);
