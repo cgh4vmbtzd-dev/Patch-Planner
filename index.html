@@ -2633,14 +2633,22 @@
         renderDantePreview();
       }
 
+      function normalizeChName(str) {
+        // Strip anything in parentheses and extra whitespace for fuzzy matching
+        // e.g. "Vox 1 (wireless)" -> "vox 1"
+        return str.replace(/\s*\(.*?\)\s*/g, " ").trim().toLowerCase().replace(/\s+/g, " ");
+      }
+
       function buildNamedRoutes() {
         // For each SQ7 (FOH) channel, find the matching name on SQ6 (Monitors)
+        // Uses fuzzy match — strips parenthetical notes before comparing
         const routes = [];
         const unrouted = [];
         sq7Ch.forEach((fohName, fohIdx) => {
           if (!fohName || !fohName.trim()) return;
+          const fohNorm = normalizeChName(fohName);
           const monIdx = sq6Ch.findIndex(
-            (m) => m && m.trim().toLowerCase() === fohName.trim().toLowerCase()
+            (m) => m && normalizeChName(m) === fohNorm
           );
           if (monIdx !== -1) {
             routes.push({ sq7Ch: fohIdx + 1, sq6Ch: monIdx + 1, name: fohName.trim() });
