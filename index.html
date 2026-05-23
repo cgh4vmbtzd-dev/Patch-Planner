@@ -2702,23 +2702,119 @@
         return buf;
       }
 
+      // ── SQ 6-char auto-shortener ──────────────────────────────────────
+      const SQ_SHORT_MAP = [
+        // Vocals
+        [/^vox\s*(\d+)$/i,        (m) => `VOX${m[1]}`],
+        [/^vox$/i,                 ()  => "VOX"],
+        [/^lead\s*voc/i,           ()  => "LDVOX"],
+        [/^bg\s*vox\s*(\d+)$/i,   (m) => `BGV${m[1]}`],
+        [/^bg\s*vox$/i,            ()  => "BGVOX"],
+        // Guitars
+        [/^e.?guit.*?(\d+)$/i,    (m) => `EGTR${m[1]}`],
+        [/^e.?guit/i,              ()  => "EGTR"],
+        [/^a.?guit.*?(\d+)$/i,    (m) => `AGTR${m[1]}`],
+        [/^a.?guit/i,              ()  => "AGTR"],
+        [/^guitar.*?(\d+)$/i,     (m) => `GTR${m[1]}`],
+        [/^guitar/i,               ()  => "GTR"],
+        [/^uke/i,                  ()  => "UKE"],
+        // Bass
+        [/^bass\s*p/i,             ()  => "BASSP"],
+        [/^bass$/i,                ()  => "BASS"],
+        // Keys
+        [/^keys?\s*(\d+)$/i,      (m) => `KEYS${m[1]}`],
+        [/^keys?$/i,               ()  => "KEYS"],
+        [/^piano/i,                ()  => "PIANO"],
+        // Drums
+        [/^kick\s*out/i,           ()  => "KOUT"],
+        [/^kick\s*in/i,            ()  => "KIN"],
+        [/^kick/i,                 ()  => "KICK"],
+        [/^snare\s*\+/i,           ()  => "SNR+"],
+        [/^snare\s*-/i,            ()  => "SNR-"],
+        [/^snare\s*t/i,            ()  => "SNRT"],
+        [/^snare\s*b/i,            ()  => "SNRB"],
+        [/^snare/i,                ()  => "SNARE"],
+        [/^fl\s*tom/i,             ()  => "FLTOM"],
+        [/^rk\s*tom\s*(\d+)$/i,   (m) => `RKT${m[1]}`],
+        [/^rk\s*tom/i,             ()  => "RKTOM"],
+        [/^hi.?hat/i,              ()  => "HIHAT"],
+        [/^ovh?.*?l/i,             ()  => "OVH L"],
+        [/^ovh?.*?r/i,             ()  => "OVH R"],
+        [/^overhead.*?l/i,         ()  => "OVH L"],
+        [/^overhead.*?r/i,         ()  => "OVH R"],
+        [/^overhead/i,             ()  => "OVH"],
+        [/^room.*?l/i,             ()  => "ROOM L"],
+        [/^room.*?r/i,             ()  => "ROOM R"],
+        // Brass / Wind
+        [/^trumpet\s*(\d+)$/i,    (m) => `TRPT${m[1]}`],
+        [/^trumpet/i,              ()  => "TRPT"],
+        [/^brass.*?(\d+)$/i,      (m) => `BRAS${m[1]}`],
+        [/^brass/i,                ()  => "BRASS"],
+        [/^sax/i,                  ()  => "SAX"],
+        [/^trombone/i,             ()  => "TRMBN"],
+        // Strings
+        [/^violin/i,               ()  => "VLN"],
+        [/^viola/i,                ()  => "VLA"],
+        [/^cello/i,                ()  => "CELLO"],
+        // Misc instruments
+        [/^bongo/i,                ()  => "BONGO"],
+        [/^perc/i,                 ()  => "PERC"],
+        [/^pad/i,                  ()  => "PAD"],
+        // Tracks / playback
+        [/^analog\s*tr/i,          ()  => "ATRK"],
+        [/^digital\s*tr/i,         ()  => "DTRK"],
+        [/^track.*?l/i,            ()  => "TRK L"],
+        [/^track.*?r/i,            ()  => "TRK R"],
+        [/^track.*?(\d+)$/i,      (m) => `TRK${m[1]}`],
+        [/^track/i,                ()  => "TRK"],
+        [/^pc\s*mus/i,             ()  => "PCMUS"],
+        [/^playback/i,             ()  => "PLBK"],
+        // Comms / misc
+        [/^ann/i,                  ()  => "ANN"],
+        [/^backup/i,               ()  => "BKP"],
+        [/^talk/i,                 ()  => "TALK"],
+        [/^crowd.*?l/i,            ()  => "CRWD L"],
+        [/^crowd.*?r/i,            ()  => "CRWD R"],
+        [/^crowd/i,                ()  => "CRWD"],
+        [/^stage\s*b/i,            ()  => "STG B"],
+        [/^stage/i,                ()  => "STG"],
+        [/^fx\s*(\d+)$/i,         (m) => `FX${m[1]}`],
+      ];
+
+      function sqShortName(name) {
+        if (!name || !name.trim()) return "";
+        const trimmed = name.trim();
+        for (const [pattern, fn] of SQ_SHORT_MAP) {
+          const m = trimmed.match(pattern);
+          if (m) {
+            const result = fn(m);
+            return result.substring(0, 6);
+          }
+        }
+        // Fallback: smart truncate — remove spaces/vowels to fit in 6
+        if (trimmed.length <= 6) return trimmed.toUpperCase();
+        // Try removing spaces first
+        const noSpace = trimmed.replace(/\s+/g, "").toUpperCase();
+        if (noSpace.length <= 6) return noSpace;
+        // Just truncate
+        return trimmed.substring(0, 6).toUpperCase();
+      }
+
       function buildSQChannelList() {
-        // Build from SQ7 FOH channel list
-        // Each channel: name truncated to 6 chars, dante input = channel index (0-based)
         return sq7Ch.map((name, i) => ({
-          name: (name || `Ch${i+1}`).substring(0, 6),
-          danteInput: i  // 1:1 dante patch — ch1 = dante 0, ch2 = dante 1 etc
+          name: sqShortName(name || `CH${i+1}`),
+          danteInput: i
         }));
       }
 
       function generateSQShowFile() {
         const buf = writeSQChannels(b64ToUint8Array(SQ_SHOW_TEMPLATE_B64), buildSQChannelList());
-        downloadBinary(buf, "SHOW.DAT");
+        downloadBinary(buf, "SHOW0013.DAT");
       }
 
       function generateSQSceneFile() {
         const buf = writeSQChannels(b64ToUint8Array(SQ_SCENE_TEMPLATE_B64), buildSQChannelList());
-        downloadBinary(buf, "SCENE001.DAT");
+        downloadBinary(buf, "SCENE0013.DAT");
       }
 
       function downloadBinary(uint8arr, filename) {
