@@ -1145,18 +1145,6 @@
       const SALT_B64 = "D6I2QIcsIZy0FGLtK+c8JQ==";
       const HASH_B64 = "Ja/GnECzv+Tzcy711cMSuO1bPXu2ffnP1vwWWsxmjiI=";
       const AUTH_KEY = "bp_auth";
-      const STRIKE_KEY = "bp_strikes";
-      const MAX_STRIKES = 3; // ← change this to allow more attempts before nuke
-
-      function isTerminated() {
-        return parseInt(localStorage.getItem(STRIKE_KEY) || "0", 10) >= MAX_STRIKES;
-      }
-
-      function terminate() {
-        const box = document.getElementById("pw-box");
-        box.innerHTML = "";
-        document.getElementById("pw-overlay").style.cursor = "not-allowed";
-      }
 
       function b64ToBytes(b64) {
         const bin = atob(b64);
@@ -1176,7 +1164,6 @@
       }
 
       (function () {
-        if (isTerminated()) { terminate(); return; }
         if (sessionStorage.getItem(AUTH_KEY) === "1") {
           document.getElementById("pw-overlay").style.display = "none";
           return;
@@ -1187,8 +1174,6 @@
       })();
 
       async function checkPassword() {
-        if (isTerminated()) { terminate(); return; }
-
         const input = document.getElementById("pw-input");
         const error = document.getElementById("pw-error");
         const btn = document.getElementById("pw-submit");
@@ -1204,19 +1189,11 @@
 
         if (hash === HASH_B64) {
           sessionStorage.setItem(AUTH_KEY, "1");
-          localStorage.removeItem(STRIKE_KEY);
           document.getElementById("pw-overlay").style.display = "none";
         } else {
           input.classList.add("error");
           setTimeout(() => input.classList.remove("error"), 600);
-          const strikes = parseInt(localStorage.getItem(STRIKE_KEY) || "0", 10) + 1;
-          localStorage.setItem(STRIKE_KEY, strikes);
-          if (strikes >= MAX_STRIKES) {
-            terminate();
-          } else {
-            const remaining = MAX_STRIKES - strikes;
-            error.textContent = `Incorrect. ${remaining} attempt${remaining !== 1 ? "s" : ""} remaining.`;
-          }
+          error.textContent = "Incorrect code. Try again.";
         }
       }
     </script>
