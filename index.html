@@ -1145,6 +1145,18 @@
       const SALT_B64 = "D6I2QIcsIZy0FGLtK+c8JQ==";
       const HASH_B64 = "Ja/GnECzv+Tzcy711cMSuO1bPXu2ffnP1vwWWsxmjiI=";
       const AUTH_KEY = "bp_auth";
+      const STRIKE_KEY = "bp_strikes";
+      const MAX_STRIKES = 3; // ← change this to allow more attempts before nuke
+
+      function isTerminated() {
+        return parseInt(localStorage.getItem(STRIKE_KEY) || "0", 10) >= MAX_STRIKES;
+      }
+
+      function terminate() {
+        const box = document.getElementById("pw-box");
+        box.innerHTML = "";
+        document.getElementById("pw-overlay").style.cursor = "not-allowed";
+      }
 
       function b64ToBytes(b64) {
         const bin = atob(b64);
@@ -1164,6 +1176,7 @@
       }
 
       (function () {
+        if (isTerminated()) { terminate(); return; }
         if (sessionStorage.getItem(AUTH_KEY) === "1") {
           document.getElementById("pw-overlay").style.display = "none";
           return;
@@ -1174,6 +1187,8 @@
       })();
 
       async function checkPassword() {
+        if (isTerminated()) { terminate(); return; }
+
         const input = document.getElementById("pw-input");
         const error = document.getElementById("pw-error");
         const btn = document.getElementById("pw-submit");
@@ -1189,11 +1204,19 @@
 
         if (hash === HASH_B64) {
           sessionStorage.setItem(AUTH_KEY, "1");
+          localStorage.removeItem(STRIKE_KEY);
           document.getElementById("pw-overlay").style.display = "none";
         } else {
           input.classList.add("error");
           setTimeout(() => input.classList.remove("error"), 600);
-          error.textContent = "Incorrect code. Try again.";
+          const strikes = parseInt(localStorage.getItem(STRIKE_KEY) || "0", 10) + 1;
+          localStorage.setItem(STRIKE_KEY, strikes);
+          if (strikes >= MAX_STRIKES) {
+            terminate();
+          } else {
+            const remaining = MAX_STRIKES - strikes;
+            error.textContent = `Incorrect. ${remaining} attempt${remaining !== 1 ? "s" : ""} remaining.`;
+          }
         }
       }
     </script>
@@ -2750,32 +2773,33 @@
         const { routes } = buildNamedRoutes();
 
         const lines = [];
-        lines.push('<?xml version="1.0" encoding="UTF-8"?>');
-        lines.push(`<dante_preset name="${escXml(eventName)}" version="1">`);
+        lines.push('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>');
+        lines.push('<preset version="2.1.0">');
+        lines.push(`  <name>${escXml(eventName)}</name>`);
+        lines.push(`  <description>Dante Controller preset</description>`);
 
-        // SQ6 TX: only channels that are actually being routed to FOH
-        lines.push(`  <device name="${escXml(sq6)}">`);
+        // SQ6 TX device
+        lines.push(`  <device>`);
+        lines.push(`    <name>${escXml(sq6)}</name>`);
         routes.forEach((r) => {
-          const chNum = String(r.sq6Ch).padStart(2, "0");
-          lines.push(`    <txchannel name="${chNum}">`);
+          lines.push(`    <txchannel danteId="${r.sq6Ch}">`);
           lines.push(`      <label>${escXml(r.name)}</label>`);
           lines.push(`    </txchannel>`);
         });
         lines.push(`  </device>`);
 
-        // SQ7 RX: each FOH channel subscribes to the matched SQ6 TX channel
-        lines.push(`  <device name="${escXml(sq7)}">`);
+        // SQ7 RX device — subscribes by channel name, not number
+        lines.push(`  <device>`);
+        lines.push(`    <name>${escXml(sq7)}</name>`);
         routes.forEach((r) => {
-          const rxNum = String(r.sq7Ch).padStart(2, "0");
-          const txNum = String(r.sq6Ch).padStart(2, "0");
-          lines.push(`    <rxchannel name="${rxNum}">`);
+          lines.push(`    <rxchannel danteId="${r.sq7Ch}" mediaType="audio">`);
+          lines.push(`      <subscribed_channel>${escXml(r.name)}</subscribed_channel>`);
           lines.push(`      <subscribed_device>${escXml(sq6)}</subscribed_device>`);
-          lines.push(`      <subscribed_channel>${txNum}</subscribed_channel>`);
           lines.push(`    </rxchannel>`);
         });
         lines.push(`  </device>`);
 
-        lines.push(`</dante_preset>`);
+        lines.push(`</preset>`);
         return lines.join("\n");
       }
 
