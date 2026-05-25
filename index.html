@@ -2895,6 +2895,17 @@
         nvBuf[nvBuf.length - 1] = (checksum >>> 24) & 0xFF;
 
         const folderName = `SHOW${getSQShowNum()}`;
+        // Verify checksum before downloading
+        const verifyChecksum = sqCrc32(nvBuf);
+        const storedChecksum = (nvBuf[nvBuf.length-4]) |
+          (nvBuf[nvBuf.length-3] << 8) |
+          (nvBuf[nvBuf.length-2] << 16) |
+          (nvBuf[nvBuf.length-1] << 24);
+        if ((verifyChecksum >>> 0) !== (storedChecksum >>> 0)) {
+          alert(`Checksum mismatch! computed=0x${verifyChecksum.toString(16)} stored=0x${(storedChecksum>>>0).toString(16)}`);
+          return;
+        }
+
         const zip = buildZip([
           { name: `${folderName}/SHOW.DAT`, data: showBuf },
           { name: `${folderName}/NVDATA.DAT`, data: nvBuf },
