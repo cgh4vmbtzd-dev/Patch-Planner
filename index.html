@@ -2906,11 +2906,9 @@
           return;
         }
 
-        const zip = await buildZip([
-          { name: `${folderName}/SHOW.DAT`, data: showBuf },
-          { name: `${folderName}/NVDATA.DAT`, data: nvBuf },
-        ]);
-        downloadBinary(zip, `${folderName}.zip`);
+        // Download both files separately
+        downloadBinary(new Uint8Array(showBuf), "SHOW.DAT");
+        setTimeout(() => downloadBinary(new Uint8Array(nvBuf), "NVDATA.DAT"), 400);
         } catch(err) {
           alert("Error generating show file: " + err.message);
           console.error(err);
