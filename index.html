@@ -2737,6 +2737,83 @@
         return arr;
       }
 
+      // ── SQ 6-char auto-shortener ──────────────────────────────────────
+      const SQ_SHORT_MAP = [
+        [/^vox\s*(\d+)$/i,        (m) => `VOX${m[1]}`],
+        [/^vox$/i,                   ()  => "VOX"],
+        [/^lead\s*voc/i,            ()  => "LDVOX"],
+        [/^bg\s*vox\s*(\d+)$/i,  (m) => `BGV${m[1]}`],
+        [/^bg\s*vox$/i,             ()  => "BGVOX"],
+        [/^e.?guit.*?(\d+)$/i,     (m) => `EGTR${m[1]}`],
+        [/^e.?guit/i,                ()  => "EGTR"],
+        [/^a.?guit.*?(\d+)$/i,     (m) => `AGTR${m[1]}`],
+        [/^a.?guit/i,                ()  => "AGTR"],
+        [/^guitar.*?(\d+)$/i,      (m) => `GTR${m[1]}`],
+        [/^guitar/i,                 ()  => "GTR"],
+        [/^uke/i,                    ()  => "UKE"],
+        [/^bass\s*p/i,              ()  => "BASSP"],
+        [/^bass$/i,                  ()  => "BASS"],
+        [/^keys?\s*(\d+)$/i,      (m) => `KEYS${m[1]}`],
+        [/^keys?$/i,                 ()  => "KEYS"],
+        [/^piano/i,                  ()  => "PIANO"],
+        [/^kick\s*out/i,            ()  => "KOUT"],
+        [/^kick\s*in/i,             ()  => "KIN"],
+        [/^kick/i,                   ()  => "KICK"],
+        [/^snare\s*\+/i,           ()  => "SNR+"],
+        [/^snare\s*-/i,             ()  => "SNR-"],
+        [/^snare\s*t/i,             ()  => "SNRT"],
+        [/^snare\s*b/i,             ()  => "SNRB"],
+        [/^snare/i,                  ()  => "SNARE"],
+        [/^fl\s*tom/i,              ()  => "FLTOM"],
+        [/^rk\s*tom\s*(\d+)$/i,  (m) => `RKT${m[1]}`],
+        [/^rk\s*tom/i,              ()  => "RKTOM"],
+        [/^hi.?hat/i,                ()  => "HIHAT"],
+        [/^ovh?.*?l/i,               ()  => "OVH L"],
+        [/^ovh?.*?r/i,               ()  => "OVH R"],
+        [/^overhead.*?l/i,           ()  => "OVH L"],
+        [/^overhead.*?r/i,           ()  => "OVH R"],
+        [/^overhead/i,               ()  => "OVH"],
+        [/^room.*?l/i,               ()  => "ROOML"],
+        [/^room.*?r/i,               ()  => "ROOMR"],
+        [/^trumpet\s*(\d+)$/i,    (m) => `TRPT${m[1]}`],
+        [/^trumpet/i,                ()  => "TRPT"],
+        [/^brass.*?(\d+)$/i,       (m) => `BRAS${m[1]}`],
+        [/^brass/i,                  ()  => "BRASS"],
+        [/^sax/i,                    ()  => "SAX"],
+        [/^trombone/i,               ()  => "TRMBN"],
+        [/^bongo/i,                  ()  => "BONGO"],
+        [/^perc/i,                   ()  => "PERC"],
+        [/^analog\s*tr/i,           ()  => "ATRK"],
+        [/^digital\s*tr/i,          ()  => "DTRK"],
+        [/^track.*?l/i,              ()  => "TRK L"],
+        [/^track.*?r/i,              ()  => "TRK R"],
+        [/^track.*?(\d+)$/i,       (m) => `TRK${m[1]}`],
+        [/^track/i,                  ()  => "TRK"],
+        [/^pc\s*mus/i,              ()  => "PCMUS"],
+        [/^ann/i,                    ()  => "ANN"],
+        [/^backup/i,                 ()  => "BKP"],
+        [/^talk/i,                   ()  => "TALK"],
+        [/^crowd.*?l/i,              ()  => "CRWDL"],
+        [/^crowd.*?r/i,              ()  => "CRWDR"],
+        [/^crowd/i,                  ()  => "CRWD"],
+        [/^stage\s*b/i,             ()  => "STG B"],
+        [/^stage/i,                  ()  => "STG"],
+        [/^fx\s*(\d+)$/i,         (m) => `FX${m[1]}`],
+      ];
+
+      function sqShortName(name) {
+        if (!name || !name.trim()) return "";
+        const trimmed = name.trim();
+        for (const [pattern, fn] of SQ_SHORT_MAP) {
+          const m = trimmed.match(pattern);
+          if (m) return fn(m).substring(0, 6);
+        }
+        if (trimmed.length <= 6) return trimmed.toUpperCase();
+        const noSpace = trimmed.replace(/\s+/g, "").toUpperCase();
+        if (noSpace.length <= 6) return noSpace;
+        return trimmed.substring(0, 6).toUpperCase();
+      }
+
       function buildSQChannelList() {
         return sq7Ch.map((name, i) => ({
           name: sqShortName(name || `CH${i+1}`),
