@@ -1648,14 +1648,23 @@
         </div>
         <div class="card-body open">
           <div style="padding:14px; display:flex; flex-direction:column; gap:10px;">
-            <div style="font-size:0.75rem; color:var(--muted); line-height:1.7; padding:10px; background:var(--surface2); border-radius:8px; border:1px solid var(--border);">
-              Generates a valid <strong style="color:var(--text)">NVDATA.DAT</strong> with your FOH channel names and I/O Port patch pre-loaded. Drop it into your show folder on USB alongside a <strong style="color:var(--text)">SHOW.DAT</strong> from any existing show.
+            <div style="display:flex; align-items:center; gap:12px;">
+              <label style="font-size:0.78rem; color:var(--muted); width:100px; flex-shrink:0;">Show Name</label>
+              <input id="sq-show-name" type="text" placeholder="Uses Event name if blank"
+                style="flex:1; background:var(--surface2); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:0.82rem; padding:8px 10px; outline:none;"
+                oninput="save('bp_sq_show_name', this.value)" />
             </div>
-            <button class="btn btn-primary" onclick="generateSQNVDATA()">
-              ⬇ Download NVDATA.DAT
-            </button>
+            <div style="display:flex; gap:10px;">
+              <button class="btn btn-primary" style="flex:1" onclick="generateSQShowFiles()">
+                ⬇ Download Both Files
+              </button>
+            </div>
+            <div style="display:flex; gap:10px; margin-top:2px;">
+              <button class="btn btn-ghost btn-sm" style="flex:1" onclick="generateSQShowDAT()">SHOW.DAT only</button>
+              <button class="btn btn-ghost btn-sm" style="flex:1" onclick="generateSQNVDATA()">NVDATA.DAT only</button>
+            </div>
             <p style="font-size:0.72rem; color:var(--muted);">
-              On SQ7: <strong style="color:var(--text)">Utility → Shows → Recall</strong> → select your show folder.
+              Create a folder named <strong style="color:var(--text)">SHOW0013</strong> (or next available) on USB, drop both files in, then on SQ7: <strong style="color:var(--text)">Utility → Shows → Recall</strong>.
             </p>
           </div>
         </div>
@@ -1818,7 +1827,11 @@
 
         if (id === "slink") renderSLink();
         if (id === "event") renderEventPreview();
-        if (id === "dante") { loadDanteNames(); }
+        if (id === "dante") {
+          loadDanteNames();
+          const sqNameEl = document.getElementById("sq-show-name");
+          if (sqNameEl) sqNameEl.value = load("bp_sq_show_name", "");
+        }
       }
 
       // ════════════════════════════════════════════════════════════════
@@ -2728,6 +2741,21 @@
         }));
       }
 
+      function getSQShowName() {
+        const field = document.getElementById("sq-show-name");
+        const fieldVal = field ? field.value.trim() : "";
+        return (fieldVal || eventInfo.name || "PatchPlanner").substring(0, 511);
+      }
+
+      function generateSQShowDAT() {
+        // 512 bytes: show name as ASCII, null padded
+        const name = getSQShowName();
+        const buf = new Uint8Array(512);
+        const nameBytes = new TextEncoder().encode(name);
+        buf.set(nameBytes, 0);
+        downloadBinary(buf, "SHOW.DAT");
+      }
+
       function generateSQNVDATA() {
         const buf = b64ToUint8Array(SQ_NVDATA_TEMPLATE_B64);
         const channels = buildSQChannelList();
@@ -2750,6 +2778,11 @@
         buf[buf.length - 1] = (checksum >>> 24) & 0xFF;
 
         downloadBinary(buf, "NVDATA.DAT");
+      }
+
+      function generateSQShowFiles() {
+        generateSQShowDAT();
+        setTimeout(() => generateSQNVDATA(), 300);
       }
 
       function downloadBinary(uint8arr, filename) {
