@@ -1654,17 +1654,19 @@
                 style="flex:1; background:var(--surface2); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:0.82rem; padding:8px 10px; outline:none;"
                 oninput="save('bp_sq_show_name', this.value)" />
             </div>
+            <div style="display:flex; align-items:center; gap:12px;">
+              <label style="font-size:0.78rem; color:var(--muted); width:100px; flex-shrink:0;">Show Number</label>
+              <input id="sq-show-num" type="number" min="0" max="9999" placeholder="e.g. 14"
+                style="flex:1; background:var(--surface2); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:0.82rem; padding:8px 10px; outline:none;"
+                oninput="save('bp_sq_show_num', this.value)" />
+            </div>
             <div style="display:flex; gap:10px;">
-              <button class="btn btn-primary" style="flex:1" onclick="generateSQShowFiles()">
-                ⬇ Download Both Files
+              <button class="btn btn-primary" style="flex:1" onclick="generateSQShowZip()">
+                ⬇ Download Show Folder (.zip)
               </button>
             </div>
-            <div style="display:flex; gap:10px; margin-top:2px;">
-              <button class="btn btn-ghost btn-sm" style="flex:1" onclick="generateSQShowDAT()">SHOW.DAT only</button>
-              <button class="btn btn-ghost btn-sm" style="flex:1" onclick="generateSQNVDATA()">NVDATA.DAT only</button>
-            </div>
             <p style="font-size:0.72rem; color:var(--muted);">
-              Create a folder named <strong style="color:var(--text)">SHOW0013</strong> (or next available) on USB, drop both files in, then on SQ7: <strong style="color:var(--text)">Utility → Shows → Recall</strong>.
+              Unzip to USB — you'll get a <strong style="color:var(--text)">SHOW00XX</strong> folder with both files inside. Then on SQ7: <strong style="color:var(--text)">Utility → Shows → Recall</strong>.
             </p>
           </div>
         </div>
@@ -1831,6 +1833,8 @@
           loadDanteNames();
           const sqNameEl = document.getElementById("sq-show-name");
           if (sqNameEl) sqNameEl.value = load("bp_sq_show_name", "");
+          const sqNumEl = document.getElementById("sq-show-num");
+          if (sqNumEl) sqNumEl.value = load("bp_sq_show_num", "");
         }
       }
 
@@ -2780,9 +2784,133 @@
         downloadBinary(buf, "NVDATA.DAT");
       }
 
+      function getSQShowNum() {
+        const el = document.getElementById("sq-show-num");
+        const val = el ? el.value.trim() : "";
+        const num = parseInt(val, 10);
+        if (!isNaN(num) && num >= 0) return String(num).padStart(4, "0");
+        return "0013";
+      }
+
+      async function generateSQShowZip() {
+        // Build SHOW.DAT bytes
+        const showName = getSQShowName();
+        const showBuf = new Uint8Array(512);
+        showBuf.set(new TextEncoder().encode(showName), 0);
+
+        // Build NVDATA.DAT bytes
+        const nvBuf = b64ToUint8Array(SQ_NVDATA_TEMPLATE_B64);
+        const channels = buildSQChannelList();
+        for (let i = 0; i < Math.min(channels.length, 48); i++) {
+          const offset = SQ_CH_BASE + i * SQ_CH_SPACING;
+          const ch = channels[i];
+          const nameBytes = new TextEncoder().encode(ch.name.substring(0, 6));
+          nvBuf.fill(0, offset, offset + 8);
+          nvBuf.set(nameBytes, offset);
+          nvBuf[offset + 24] = ch.patch;
+          nvBuf[offset + 26] = ch.type;
+        }
+        const checksum = sqCrc32(nvBuf);
+        nvBuf[nvBuf.length - 4] = checksum & 0xFF;
+        nvBuf[nvBuf.length - 3] = (checksum >>> 8) & 0xFF;
+        nvBuf[nvBuf.length - 2] = (checksum >>> 16) & 0xFF;
+        nvBuf[nvBuf.length - 1] = (checksum >>> 24) & 0xFF;
+
+        const folderName = `SHOW${getSQShowNum()}`;
+        const zip = buildZip([
+          { name: `${folderName}/SHOW.DAT`, data: showBuf },
+          { name: `${folderName}/NVDATA.DAT`, data: nvBuf },
+        ]);
+        downloadBinary(zip, `${folderName}.zip`);
+      }
+
+      // Minimal ZIP builder (store method, no compression)
+      function buildZip(files) {
+        const enc = new TextEncoder();
+        const localHeaders = [];
+        const centralHeaders = [];
+        let offset = 0;
+
+        for (const file of files) {
+          const nameBytes = enc.encode(file.name);
+          const data = file.data;
+          const crc = zipCrc32(data);
+
+          // Local file header
+          const local = new Uint8Array(30 + nameBytes.length + data.length);
+          const lv = new DataView(local.buffer);
+          lv.setUint32(0, 0x04034b50, true); // signature
+          lv.setUint16(4, 20, true);          // version needed
+          lv.setUint16(6, 0, true);           // flags
+          lv.setUint16(8, 0, true);           // compression (store)
+          lv.setUint16(10, 0, true);          // mod time
+          lv.setUint16(12, 0, true);          // mod date
+          lv.setUint32(14, crc, true);        // crc32
+          lv.setUint32(18, data.length, true);// compressed size
+          lv.setUint32(22, data.length, true);// uncompressed size
+          lv.setUint16(26, nameBytes.length, true); // name length
+          lv.setUint16(28, 0, true);          // extra length
+          local.set(nameBytes, 30);
+          local.set(data, 30 + nameBytes.length);
+          localHeaders.push({ bytes: local, nameBytes, crc, size: data.length, offset });
+          offset += local.length;
+        }
+
+        for (const f of localHeaders) {
+          const central = new Uint8Array(46 + f.nameBytes.length);
+          const cv = new DataView(central.buffer);
+          cv.setUint32(0, 0x02014b50, true);
+          cv.setUint16(4, 20, true);
+          cv.setUint16(6, 20, true);
+          cv.setUint16(8, 0, true);
+          cv.setUint16(10, 0, true);
+          cv.setUint16(12, 0, true);
+          cv.setUint16(14, 0, true);
+          cv.setUint32(16, f.crc, true);
+          cv.setUint32(20, f.size, true);
+          cv.setUint32(24, f.size, true);
+          cv.setUint16(28, f.nameBytes.length, true);
+          cv.setUint16(30, 0, true);
+          cv.setUint16(32, 0, true);
+          cv.setUint16(34, 0, true);
+          cv.setUint16(36, 0, true);
+          cv.setUint32(38, 0, true);
+          cv.setUint32(42, f.offset, true);
+          central.set(f.nameBytes, 46);
+          centralHeaders.push(central);
+        }
+
+        const centralSize = centralHeaders.reduce((s, c) => s + c.length, 0);
+        const eocd = new Uint8Array(22);
+        const ev = new DataView(eocd.buffer);
+        ev.setUint32(0, 0x06054b50, true);
+        ev.setUint16(4, 0, true);
+        ev.setUint16(6, 0, true);
+        ev.setUint16(8, files.length, true);
+        ev.setUint16(10, files.length, true);
+        ev.setUint32(12, centralSize, true);
+        ev.setUint32(16, offset, true);
+        ev.setUint16(20, 0, true);
+
+        const totalSize = offset + centralSize + 22;
+        const out = new Uint8Array(totalSize);
+        let pos = 0;
+        for (const f of localHeaders) { out.set(f.bytes, pos); pos += f.bytes.length; }
+        for (const c of centralHeaders) { out.set(c, pos); pos += c.length; }
+        out.set(eocd, pos);
+        return out;
+      }
+
+      function zipCrc32(data) {
+        let crc = 0xFFFFFFFF;
+        for (let i = 0; i < data.length; i++) {
+          crc = SQ_CRC_TABLE[(crc ^ data[i]) & 0xFF] ^ (crc >>> 8);
+        }
+        return (crc ^ 0xFFFFFFFF) >>> 0;
+      }
+
       function generateSQShowFiles() {
-        generateSQShowDAT();
-        setTimeout(() => generateSQNVDATA(), 300);
+        generateSQShowZip();
       }
 
       function downloadBinary(uint8arr, filename) {
