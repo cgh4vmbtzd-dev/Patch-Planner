@@ -2906,7 +2906,7 @@
           return;
         }
 
-        const zip = buildZip([
+        const zip = await buildZip([
           { name: `${folderName}/SHOW.DAT`, data: showBuf },
           { name: `${folderName}/NVDATA.DAT`, data: nvBuf },
         ]);
@@ -2917,89 +2917,30 @@
         }
       }
 
-      // Minimal ZIP builder (store method, no compression)
-      function buildZip(files) {
-        const enc = new TextEncoder();
-        const localHeaders = [];
-        const centralHeaders = [];
-        let offset = 0;
-
-        for (const file of files) {
-          const nameBytes = enc.encode(file.name);
-          const data = file.data;
-          const crc = zipCrc32(data);
-
-          // Local file header
-          const local = new Uint8Array(30 + nameBytes.length + data.length);
-          const lv = new DataView(local.buffer);
-          lv.setUint32(0, 0x04034b50, true); // signature
-          lv.setUint16(4, 20, true);          // version needed
-          lv.setUint16(6, 0, true);           // flags
-          lv.setUint16(8, 0, true);           // compression (store)
-          lv.setUint16(10, 0, true);          // mod time
-          lv.setUint16(12, 0, true);          // mod date
-          lv.setUint32(14, crc, true);        // crc32
-          lv.setUint32(18, data.length, true);// compressed size
-          lv.setUint32(22, data.length, true);// uncompressed size
-          lv.setUint16(26, nameBytes.length, true); // name length
-          lv.setUint16(28, 0, true);          // extra length
-          local.set(nameBytes, 30);
-          local.set(data, 30 + nameBytes.length);
-          localHeaders.push({ bytes: local, nameBytes, crc, size: data.length, offset });
-          offset += local.length;
-        }
-
-        for (const f of localHeaders) {
-          const central = new Uint8Array(46 + f.nameBytes.length);
-          const cv = new DataView(central.buffer);
-          cv.setUint32(0, 0x02014b50, true);
-          cv.setUint16(4, 20, true);
-          cv.setUint16(6, 20, true);
-          cv.setUint16(8, 0, true);
-          cv.setUint16(10, 0, true);
-          cv.setUint16(12, 0, true);
-          cv.setUint16(14, 0, true);
-          cv.setUint32(16, f.crc, true);
-          cv.setUint32(20, f.size, true);
-          cv.setUint32(24, f.size, true);
-          cv.setUint16(28, f.nameBytes.length, true);
-          cv.setUint16(30, 0, true);
-          cv.setUint16(32, 0, true);
-          cv.setUint16(34, 0, true);
-          cv.setUint16(36, 0, true);
-          cv.setUint32(38, 0, true);
-          cv.setUint32(42, f.offset, true);
-          central.set(f.nameBytes, 46);
-          centralHeaders.push(central);
-        }
-
-        const centralSize = centralHeaders.reduce((s, c) => s + c.length, 0);
-        const eocd = new Uint8Array(22);
-        const ev = new DataView(eocd.buffer);
-        ev.setUint32(0, 0x06054b50, true);
-        ev.setUint16(4, 0, true);
-        ev.setUint16(6, 0, true);
-        ev.setUint16(8, files.length, true);
-        ev.setUint16(10, files.length, true);
-        ev.setUint32(12, centralSize, true);
-        ev.setUint32(16, offset, true);
-        ev.setUint16(20, 0, true);
-
-        const totalSize = offset + centralSize + 22;
-        const out = new Uint8Array(totalSize);
-        let pos = 0;
-        for (const f of localHeaders) { out.set(f.bytes, pos); pos += f.bytes.length; }
-        for (const c of centralHeaders) { out.set(c, pos); pos += c.length; }
-        out.set(eocd, pos);
-        return out;
+      // ZIP builder using fflate (loaded on demand)
+      async function loadFflate() {
+        if (window.fflate) return;
+        await new Promise((resolve, reject) => {
+          const s = document.createElement("script");
+          s.src = "https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js";
+          s.onload = resolve;
+          s.onerror = reject;
+          document.head.appendChild(s);
+        });
       }
 
-      function zipCrc32(data) {
-        let crc = 0xFFFFFFFF;
-        for (let i = 0; i < data.length; i++) {
-          crc = SQ_CRC_TABLE[(crc ^ data[i]) & 0xFF] ^ (crc >>> 8);
+      async function buildZip(files) {
+        await loadFflate();
+        const zipFiles = {};
+        for (const f of files) {
+          zipFiles[f.name] = [f.data, { level: 0 }];
         }
-        return (crc ^ 0xFFFFFFFF) >>> 0;
+        return new Promise((resolve, reject) => {
+          fflate.zip(zipFiles, { level: 0 }, (err, data) => {
+            if (err) reject(err);
+            else resolve(data);
+          });
+        });
       }
 
       function generateSQShowFiles() {
