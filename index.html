@@ -2793,6 +2793,7 @@
       }
 
       async function generateSQShowZip() {
+        try {
         // Build SHOW.DAT bytes
         const showName = getSQShowName();
         const showBuf = new Uint8Array(512);
@@ -2822,6 +2823,10 @@
           { name: `${folderName}/NVDATA.DAT`, data: nvBuf },
         ]);
         downloadBinary(zip, `${folderName}.zip`);
+        } catch(err) {
+          alert("Error generating show file: " + err.message);
+          console.error(err);
+        }
       }
 
       // Minimal ZIP builder (store method, no compression)
